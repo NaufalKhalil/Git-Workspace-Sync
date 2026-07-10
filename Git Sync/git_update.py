@@ -18,6 +18,7 @@ import os
 import sys
 import subprocess
 import argparse
+import fnmatch
 from pathlib import Path
 from datetime import datetime
 
@@ -74,26 +75,73 @@ def count_changes(repo):
     return len([l for l in out.strip().splitlines() if l.strip()])
 
 
-def show_changes(repo):
-    """Tampilkan daftar file berubah pakai git status --short."""
-    ok, out = git(["status", "--short"], repo)
-    if not out.strip():
-        return
-    for line in out.strip().splitlines():
-        if len(line) >= 3:
-            code = line[:2].strip()
-            name = line[3:] if len(line) > 3 else line[2:]
-            icons = {"M":"~","A":"+","D":"-","R":"→","?":"*","U":"!"}
-            icon = icons.get(code[0] if code else "?", "•")
-            color = yellow if code.startswith("M") else (
-                    green  if code in ("A","??") else (
-                    red    if code.startswith("D") else cyan))
-            print(f"      {color(icon)} {name.strip()}")
+def show_changes(repo, patterns=None):
+    """Tampilkan daftar file berubah pakai git status --short.
+    File yang cocok .pushignore ditandai 🔒 SKIP dan diberi warna dim."""
+    patterns = patterns or []
+    for code, name in changed_files(repo):
+        icons = {"M":"~","A":"+","D":"-","R":"→","?":"*","U":"!"}
+        icon = icons.get(code[0] if code else "?", "•")
+        if is_ignored_file(name, patterns):
+            print(f"      {dim('🔒 SKIP')} {dim(name)}")
+            continue
+        color = yellow if code.startswith("M") else (
+                green  if code in ("A","??") else (
+                red    if code.startswith("D") else cyan))
+        print(f"      {color(icon)} {name}")
 
 
 def has_upstream(repo, br):
     ok, _ = git(["rev-parse", "--abbrev-ref", f"{br}@{{upstream}}"], repo)
     return ok
+
+
+def load_pushignore(repo):
+    """Baca daftar pattern dari .pushignore di root repo (kalau ada)."""
+    f = repo / ".pushignore"
+    if not f.exists():
+        return []
+    patterns = []
+    for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            patterns.append(line)
+    return patterns
+
+
+def is_ignored_file(path, patterns):
+    """Cek apakah path (relatif ke repo) cocok salah satu pattern .pushignore."""
+    path = path.strip().strip('"')
+    base = os.path.basename(path)
+    for pat in patterns:
+        if fnmatch.fnmatch(path, pat) or fnmatch.fnmatch(base, pat):
+            return True
+        # dukung pattern folder, misal "secrets/" atau "secrets"
+        if pat.rstrip("/") and (path == pat.rstrip("/") or path.startswith(pat.rstrip("/") + "/")):
+            return True
+    return False
+
+
+def changed_files(repo):
+    ok, out = git(["status", "--porcelain=v1"], repo)
+    result = []
+
+    for line in out.splitlines():
+        if len(line) < 4:
+            continue
+
+        code = line[:2]          # jangan di-strip dulu
+        name = line[3:]          # nama selalu mulai index 3
+
+        # rename
+        if " -> " in name:
+            name = name.split(" -> ", 1)[1]
+
+        name = name.strip().strip('"')
+
+        result.append((code.strip(), name))
+
+    return result
 
 
 def find_repos(start):
@@ -120,16 +168,36 @@ def push_repo(repo, commit_msg=None):
         print(f"  {green('✓')} Tidak ada perubahan.")
         return True
 
-    n = count_changes(repo)
+    patterns = load_pushignore(repo)
+    files = changed_files(repo)
+    n = len(files)
     print(f"\n  {bold(f'{n} file berubah:')}\n")
-    show_changes(repo)
+    show_changes(repo, patterns)
 
-    # git add .
-    ok, out = git(["add", "."], repo)
+    to_add    = [name for code, name in files if not is_ignored_file(name, patterns)]
+    skipped   = [name for code, name in files if is_ignored_file(name, patterns)]
+
+    if skipped:
+        print(f"\n  {dim(f'🔒 {len(skipped)} file di-skip (.pushignore)')}")
+
+    if not to_add:
+        print(f"\n  {yellow('⚠ Semua file berubah masuk .pushignore, tidak ada yang di-push.')}")
+        return True
+
+    # stage SEMUA perubahan dulu (aman untuk file baru, terhapus, rename, dll)
+    ok, out = git(["add", "-A"], repo)
     if not ok:
         print(red(f"\n  ✗ git add gagal: {out}"))
         return False
-    print(f"\n  {green('✓')} Semua file di-stage.")
+
+    # lalu unstage file yang cocok .pushignore
+    for name in skipped:
+        ok_u, out_u = git(["restore", "--staged", "--", name], repo)
+        if not ok_u:
+            # fallback untuk git versi lama yang belum punya `git restore`
+            git(["reset", "HEAD", "--", name], repo)
+
+    print(f"\n  {green('✓')} {len(to_add)} file di-stage.")
 
     # commit message
     if commit_msg:
@@ -156,7 +224,7 @@ def push_repo(repo, commit_msg=None):
         first_line = msg.splitlines()[0]
         print(green(f'  ✓ Commit: "{first_line}"'))
 
-    # git push
+    # git pusha
     push_args = ["push"]
     if not has_upstream(repo, br):
         push_args += ["--set-upstream", "origin", br]

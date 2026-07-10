@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Code Formatter — Rapikan Kode</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,sans-serif;background:#0f1117;color:#d4d4d8;min-height:100vh;padding:20px}
+  h1{font-size:20px;font-weight:600;color:#f4f4f5;margin-bottom:4px}
+  .subtitle{font-size:13px;color:#71717a;margin-bottom:20px}
+  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .toolbar label{font-size:13px;color:#a1a1aa}
+  select,input[type=number]{
+    font-size:13px;padding:4px 8px;border-radius:8px;
+    border:1px solid #3f3f46;background:#18181b;color:#d4d4d8;height:32px;
+  }
+  select:focus,input[type=number]:focus{outline:2px solid #3b82f6;outline-offset:1px}
+  .btn{
+    font-size:13px;padding:0 14px;height:32px;border-radius:8px;
+    border:1px solid #3f3f46;background:transparent;color:#d4d4d8;
+    cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .15s;
+  }
+  .btn:hover{background:#27272a}
+  .btn.primary{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+  .btn.primary:hover{background:#1e40af}
+  .btn:active{transform:scale(0.98)}
+  .drop-zone{
+    border:1.5px dashed #3f3f46;border-radius:10px;padding:18px;
+    text-align:center;font-size:13px;color:#71717a;cursor:pointer;
+    transition:background .15s;margin-bottom:12px;
+  }
+  .drop-zone:hover,.drop-zone.active{background:#18181b;border-color:#52525b}
+  .drop-icon{font-size:24px;margin-bottom:6px}
+  .panels{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:600px){.panels{grid-template-columns:1fr}}
+  .panel{display:flex;flex-direction:column;border:1px solid #3f3f46;border-radius:10px;overflow:hidden}
+  .panel-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:8px 12px;background:#18181b;border-bottom:1px solid #3f3f46;
+  }
+  .panel-label{font-size:11px;font-weight:600;color:#71717a;letter-spacing:.06em;text-transform:uppercase}
+  .chip{font-size:11px;padding:2px 8px;border-radius:99px;background:#27272a;border:1px solid #3f3f46;color:#71717a}
+  textarea{
+    width:100%;flex:1;resize:vertical;border:none;outline:none;
+    background:#0f1117;color:#d4d4d8;font-family:Consolas,Monaco,'Courier New',monospace;
+    font-size:12.5px;line-height:1.7;padding:12px;min-height:380px;
+    tab-size:2;
+  }
+  .panel-footer{
+    display:flex;align-items:center;justify-content:space-between;
+    font-size:12px;padding:6px 12px;border-top:1px solid #3f3f46;
+    color:#71717a;background:#18181b;
+  }
+  .status.ok{color:#22c55e}
+  .status.err{color:#ef4444}
+  .sep{flex:1}
+  .hint{font-size:12px;color:#52525b;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>⚡ Code Formatter</h1>
+<p class="subtitle">Rapikan JSON, JavaScript, HTML, CSS, XML, SQL dari satu baris menjadi terstruktur dan ber-indentasi.</p>
+
+<div class="toolbar">
+  <label>Bahasa</label>
+  <select id="lang">
+    <option value="auto">🔍 Auto-detect</option>
+    <option value="json">JSON</option>
+    <option value="js">JavaScript / TypeScript</option>
+    <option value="html">HTML</option>
+    <option value="css">CSS</option>
+    <option value="xml">XML</option>
+    <option value="sql">SQL</option>
+  </select>
+  <label>Tab size</label>
+  <input type="number" id="tabsize" value="2" min="1" max="8" style="width:56px">
+  <select id="tabtype">
+    <option value="space">Spasi</option>
+    <option value="tab">Tab (\t)</option>
+  </select>
+  <div class="sep"></div>
+  <button class="btn" id="clearBtn">🗑 Bersihkan</button>
+  <button class="btn primary" id="fmtBtn">✨ Rapikan Sekarang</button>
+</div>
+
+<div class="drop-zone" id="dropZone">
+  <div class="drop-icon">📂</div>
+  Seret &amp; lepas file di sini (.json, .js, .ts, .html, .css, .xml, .sql, .txt)
+  <br><span style="margin-top:4px;display:inline-block">atau <u style="cursor:pointer" id="browseLink">klik untuk pilih file</u></span>
+  <input type="file" id="fileInput" style="display:none" accept=".json,.js,.ts,.html,.css,.xml,.sql,.txt">
+</div>
+
+<div class="panels">
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-label">Input — Kode Mentah</span>
+      <span class="chip" id="inChip">0 karakter</span>
+    </div>
+    <textarea id="inputArea" placeholder='Tempel kode di sini...&#10;&#10;Contoh JSON:&#10;{"name":"John","age":30,"hobbies":["coding","reading"]}'></textarea>
+    <div class="panel-footer">
+      <span class="status" id="inStatus">Siap</span>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-label">Output — Sudah Rapi</span>
+      <button class="btn" id="copyBtn" style="font-size:12px;height:26px;padding:0 10px">📋 Salin</button>
+    </div>
+    <textarea id="outputArea" readonly placeholder="Hasil yang sudah dirapikan akan muncul di sini..."></textarea>
+    <div class="panel-footer">
+      <span class="status" id="outStatus">—</span>
+      <button class="btn" id="downloadBtn" style="font-size:12px;height:26px;padding:0 10px;display:none">💾 Simpan File</button>
+    </div>
+  </div>
+</div>
+<p class="hint">💡 Tip: Setelah format, klik "Simpan File" untuk mengunduh hasil sebagai file baru.</p>
+
+<script>
+const inputArea=document.getElementById('inputArea');
+const outputArea=document.getElementById('outputArea');
+const inChip=document.getElementById('inChip');
+const inStatus=document.getElementById('inStatus');
+const outStatus=document.getElementById('outStatus');
+const langSel=document.getElementById('lang');
+const tabSizeSel=document.getElementById('tabsize');
+const tabTypeSel=document.getElementById('tabtype');
+const downloadBtn=document.getElementById('downloadBtn');
+
+let currentFileName='output';
+let currentExt='txt';
+
+function getIndent(){
+  const n=parseInt(tabSizeSel.value)||2;
+  return tabTypeSel.value==='tab'?'\t':' '.repeat(n);
+}
+
+function detectLang(src){
+  const s=src.trim();
+  if((s.startsWith('{')&&s.endsWith('}'))||(s.startsWith('[')&&s.endsWith(']'))){
+    try{JSON.parse(s);return'json';}catch(e){}
+  }
+  if(/^<\?xml/.test(s))return'xml';
+  if(/^<!DOCTYPE html/i.test(s)||(/^<html/i.test(s)))return'html';
+  if(/^<[\w]/i.test(s)&&s.includes('</')&&!/{/.test(s))return'html';
+  if(/SELECT\s+[\w\*]|INSERT\s+INTO|UPDATE\s+\w|CREATE\s+TABLE|DROP\s+TABLE/i.test(s))return'sql';
+  if(/[a-z-]+\s*:\s*[^;]+;/i.test(s)&&/{/.test(s)&&!(/function|=>|var |let |const /.test(s)))return'css';
+  return'js';
+}
+
+function formatJSON(src,indent){
+  try{
+    const parsed=JSON.parse(src);
+    return{ok:true,result:JSON.stringify(parsed,null,indent)};
+  }catch(e){
+    // try to fix common issues
+    try{
+      const fixed=src
+        .replace(/,\s*([}\]])/g,'$1')   // trailing comma
+        .replace(/(['"])?([a-zA-Z0-9_$]+)(['"])?\s*:/g,'"$2":'); // unquoted keys
+      const parsed=JSON.parse(fixed);
+      return{ok:true,result:JSON.stringify(parsed,null,indent),warn:'Beberapa perbaikan kecil diterapkan otomatis.'};
+    }catch(e2){
+      return{ok:false,err:'JSON tidak valid: '+e.message};
+    }
+  }
+}
+
+function formatHTML(src,indent){
+  let depth=0;
+  const lines=[];
+  const voidTags=/^<(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)/i;
+  const tokens=src
+    .replace(/>\s*</g,'>\n<')
+    .replace(/<!--[\s\S]*?-->/g,m=>m.replace(/\n/g,' '))
+    .split('\n');
+  for(let raw of tokens){
+    const t=raw.trim();
+    if(!t)continue;
+    if(/^<\//.test(t)){depth=Math.max(0,depth-1);}
+    lines.push(indent.repeat(depth)+t);
+    if(/^<[^\/!]/.test(t)&&!voidTags.test(t)&&!t.endsWith('/>')&&!/<\//.test(t)){depth++;}
+  }
+  return{ok:true,result:lines.join('\n')};
+}
+
+function formatCSS(src,indent){
+  let res='';
+  let depth=0;
+  const tokens=src
+    .replace(/\{/g,'{\n')
+    .replace(/\}/g,'\n}\n')
+    .replace(/;/g,';\n')
+    .split('\n');
+  for(let raw of tokens){
+    const t=raw.trim();
+    if(!t)continue;
+    if(t==='}'){depth=Math.max(0,depth-1);res+=indent.repeat(depth)+'}\n';}
+    else if(t.endsWith('{')){res+=indent.repeat(depth)+t+'\n';depth++;}
+    else{res+=indent.repeat(depth)+t+'\n';}
+  }
+  return{ok:true,result:res.trim()};
+}
+
+function formatSQL(src){
+  const keywords=[
+    'SELECT','DISTINCT','FROM','WHERE','JOIN','LEFT JOIN','RIGHT JOIN',
+    'INNER JOIN','OUTER JOIN','CROSS JOIN','ON','AND','OR','NOT',
+    'GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET',
+    'INSERT INTO','VALUES','UPDATE','SET','DELETE FROM',
+    'CREATE TABLE','ALTER TABLE','DROP TABLE','CREATE INDEX',
+    'UNION','UNION ALL','INTERSECT','EXCEPT','AS','IN','BETWEEN',
+    'IS NULL','IS NOT NULL','LIKE','EXISTS','CASE','WHEN','THEN','ELSE','END'
+  ];
+  let res=src;
+  for(const k of keywords){
+    const re=new RegExp('(?<![a-zA-Z_])'+k.replace(/ /g,'\\s+')+'(?![a-zA-Z_])','gi');
+    res=res.replace(re,'\n'+k.toUpperCase());
+  }
+  return{ok:true,result:res.split('\n').map(l=>l.trim()).filter(Boolean).join('\n')};
+}
+
+function formatJS(src,indent){
+  let depth=0;
+  const lines=[];
+  let current='';
+  let inStr=false,strChar='',inTemplate=0;
+  for(let i=0;i<src.length;i++){
+    const c=src[i];
+    if(inStr){
+      current+=c;
+      if(c==='`')inTemplate=Math.max(0,inTemplate-1);
+      if(c===strChar&&src[i-1]!=='\\'){inStr=false;}
+    }else if(c==='"'||c==="'"||c==='`'){
+      inStr=true;strChar=c;if(c==='`')inTemplate++;current+=c;
+    }else if(c==='{'){
+      current+=c;
+      lines.push(indent.repeat(depth)+current.trim());
+      current='';depth++;
+    }else if(c==='}'){
+      if(current.trim()){lines.push(indent.repeat(depth)+current.trim());current='';}
+      depth=Math.max(0,depth-1);
+      const next=src[i+1];
+      if(next===';'||next===','){lines.push(indent.repeat(depth)+'}'+next);i++;}
+      else{lines.push(indent.repeat(depth)+'}');}
+    }else if(c===';'){
+      current+=c;
+      lines.push(indent.repeat(depth)+current.trim());
+      current='';
+    }else if(c==='\n'||c==='\r'){
+      if(current.trim()){lines.push(indent.repeat(depth)+current.trim());current='';}
+    }else{
+      current+=c;
+    }
+  }
+  if(current.trim())lines.push(indent.repeat(depth)+current.trim());
+  return{ok:true,result:lines.filter(l=>l.trim()).join('\n')};
+}
+
+function formatXML(src,indent){
+  let depth=0;
+  const lines=[];
+  const voidTags=/^<(br|hr|img|input|link|meta|area|base|col|embed|param|source|track|wbr)/i;
+  const tokens=src.replace(/>\s*</g,'>\n<').split('\n');
+  for(let raw of tokens){
+    const t=raw.trim();
+    if(!t)continue;
+    if(/^<\//.test(t)){depth=Math.max(0,depth-1);}
+    lines.push(indent.repeat(depth)+t);
+    if(/^<[^\/\?!]/.test(t)&&!voidTags.test(t)&&!t.endsWith('/>')&&!/<\//.test(t))depth++;
+  }
+  return{ok:true,result:lines.join('\n')};
+}
+
+function format(src){
+  if(!src.trim())return{ok:false,err:'Input kosong. Masukkan kode dulu.'};
+  const indent=getIndent();
+  const lang=langSel.value==='auto'?detectLang(src):langSel.value;
+  let r;
+  if(lang==='json')r=formatJSON(src,indent);
+  else if(lang==='html')r=formatHTML(src,indent);
+  else if(lang==='css')r=formatCSS(src,indent);
+  else if(lang==='sql')r=formatSQL(src);
+  else if(lang==='xml')r=formatXML(src,indent);
+  else r=formatJS(src,indent);
+  r.detectedLang=lang;
+  return r;
+}
+
+document.getElementById('fmtBtn').addEventListener('click',()=>{
+  const r=format(inputArea.value);
+  if(r.ok){
+    outputArea.value=r.result;
+    const lines=r.result.split('\n').length;
+    const chars=r.result.length;
+    outStatus.textContent=`✓ Selesai — ${lines} baris, ${chars.toLocaleString()} karakter`;
+    outStatus.className='status ok';
+    inStatus.textContent=`Diproses sebagai ${r.detectedLang.toUpperCase()}${r.warn?' — ⚠ '+r.warn:''}`;
+    inStatus.className='status ok';
+    downloadBtn.style.display='';
+    currentExt=r.detectedLang==='js'?'js':r.detectedLang;
+  }else{
+    outputArea.value='';
+    outStatus.textContent='✗ '+r.err;
+    outStatus.className='status err';
+    inStatus.textContent='Gagal diproses';
+    inStatus.className='status err';
+    downloadBtn.style.display='none';
+  }
+});
+
+document.getElementById('clearBtn').addEventListener('click',()=>{
+  inputArea.value='';outputArea.value='';
+  inChip.textContent='0 karakter';
+  inStatus.textContent='Siap';inStatus.className='status';
+  outStatus.textContent='—';outStatus.className='status';
+  downloadBtn.style.display='none';
+  currentFileName='output';
+});
+
+document.getElementById('copyBtn').addEventListener('click',()=>{
+  if(!outputArea.value)return;
+  navigator.clipboard.writeText(outputArea.value).then(()=>{
+    const b=document.getElementById('copyBtn');
+    const orig=b.innerHTML;
+    b.innerHTML='✅ Disalin!';
+    setTimeout(()=>{b.innerHTML=orig;},1800);
+  });
+});
+
+downloadBtn.addEventListener('click',()=>{
+  if(!outputArea.value)return;
+  const blob=new Blob([outputArea.value],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=currentFileName+'_formatted.'+currentExt;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+inputArea.addEventListener('input',()=>{
+  inChip.textContent=inputArea.value.length.toLocaleString()+' karakter';
+});
+
+const dropZone=document.getElementById('dropZone');
+const fileInput=document.getElementById('fileInput');
+
+document.getElementById('browseLink').addEventListener('click',e=>{
+  e.stopPropagation();fileInput.click();
+});
+dropZone.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',e=>{
+  const f=e.target.files[0];
+  if(f)readFile(f);
+  fileInput.value='';
+});
+dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.classList.add('active');});
+dropZone.addEventListener('dragleave',()=>dropZone.classList.remove('active'));
+dropZone.addEventListener('drop',e=>{
+  e.preventDefault();dropZone.classList.remove('active');
+  const f=e.dataTransfer.files[0];
+  if(f)readFile(f);
+});
+
+function readFile(f){
+  const parts=f.name.split('.');
+  const ext=parts.pop().toLowerCase();
+  currentFileName=parts.join('.');
+  currentExt=ext;
+  const map={json:'json',js:'js',ts:'js',html:'html',css:'css',xml:'xml',sql:'sql'};
+  if(map[ext])langSel.value=map[ext];
+  const r=new FileReader();
+  r.onload=ev=>{
+    inputArea.value=ev.target.result;
+    inChip.textContent=ev.target.result.length.toLocaleString()+' karakter';
+    inStatus.textContent='📂 File dimuat: '+f.name;
+    inStatus.className='status ok';
+  };
+  r.readAsText(f);
+}
+</script>
+</body>
+</html>
